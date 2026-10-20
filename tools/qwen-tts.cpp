@@ -67,6 +67,10 @@ static void print_usage(const char * prog) {
             "  --sub-top-k <n>         Sub-talker top-k (default: 50)\n"
             "  --sub-top-p <f>         Sub-talker top-p (default: 1.0)\n\n"
             "Debug:\n"
+            "  --threads <n>           CPU threads (default: hardware_concurrency/2; same as env QT_CPU_THREADS).\n"
+            "                          Env QT_THREADPOOL=0 disables the persistent pool, QT_THREADPOOL_POLL=<0-100>\n"
+            "                          sets its idle polling (default 0), GGML_CPU_BARRIER=spin|yield|futex and\n"
+            "                          GGML_CPU_BARRIER_SPIN=<n> select the barrier wait policy (default spin).\n"
             "  --no-fa                 Disable flash attention\n"
             "  --clamp-fp16            Clamp hidden states to FP16 range\n"
             "  --dump <dir>            Dump intermediate tensors (f32) to <dir>\n",
@@ -230,6 +234,17 @@ static bool parse_args(int argc, char ** argv, Args & a) {
             a.dump_dir = argv[++i];
         } else if (std::strcmp(arg, "--max-new") == 0 && i + 1 < argc) {
             a.max_new_tokens = std::atoi(argv[++i]);
+        } else if ((std::strcmp(arg, "--threads") == 0 || std::strcmp(arg, "-t") == 0) && i + 1 < argc) {
+            int n = std::atoi(argv[++i]);
+            if (n < 1) {
+                fprintf(stderr, "[CLI] ERROR: --threads needs a positive integer\n");
+                return false;
+            }
+#if defined(_WIN32)
+            _putenv_s("QT_CPU_THREADS", std::to_string(n).c_str());
+#else
+            setenv("QT_CPU_THREADS", std::to_string(n).c_str(), 1);
+#endif
         } else if (std::strcmp(arg, "--seed") == 0 && i + 1 < argc) {
             a.seed = (int64_t) std::atoll(argv[++i]);
         } else if (std::strcmp(arg, "--greedy") == 0) {
