@@ -6,9 +6,12 @@
 #include "tts-server.h"
 
 #include "qwen.h"
+#include "qwen-internal.h"
 #include "rvq-file.h"
 #include "version.h"
 
+#include <cerrno>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -50,6 +53,7 @@ static void print_usage(const char * prog) {
             "  --port <n>              Listen port (default: 8080)\n"
             "  --lang <name>           Language label (default: auto)\n"
             "  --max-batch <n>         Concurrent requests batched on the GPU (default: 1)\n"
+            "  --threads <n>           GGML CPU backend threads (default: half logical CPUs)\n"
             "  --no-fa                 Disable flash attention\n"
             "  --clamp-fp16            Clamp hidden states to FP16 range\n"
             "  --codec-chunk-dur <f>   Codec decode chunk duration in seconds, wav responses (default: 24.0)\n"
@@ -74,6 +78,7 @@ int main(int argc, char ** argv) {
     bool          clamp_fp16      = false;
     bool          codec_fused     = false;
     int           max_batch       = 1;
+    int           cpu_threads     = 0;
     // Chunk sentinel : qt_init resolves a non positive value to the
     // library default.
     float         codec_chunk_dur = 0.0f;
@@ -98,6 +103,20 @@ int main(int argc, char ** argv) {
             clamp_fp16 = true;
         } else if (!std::strcmp(arg, "--max-batch") && i + 1 < argc) {
             max_batch = std::atoi(argv[++i]);
+        } else if (!std::strcmp(arg, "--threads")) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "[CLI] ERROR: --threads requires a positive integer\n");
+                return 1;
+            }
+            char * end = nullptr;
+            const char * value = argv[++i];
+            errno = 0;
+            long parsed = std::strtol(value, &end, 10);
+            if (errno != 0 || end == value || *end != '\0' || parsed <= 0 || parsed > INT_MAX) {
+                fprintf(stderr, "[CLI] ERROR: --threads requires a positive integer\n");
+                return 1;
+            }
+            cpu_threads = (int) parsed;
         } else if (!std::strcmp(arg, "--codec-fused")) {
             codec_fused = true;
         } else if (!std::strcmp(arg, "--codec-chunk-dur") && i + 1 < argc) {
@@ -127,7 +146,7 @@ int main(int argc, char ** argv) {
     iparams.codec_chunk_sec = codec_chunk_dur;
     iparams.codec_fused     = codec_fused;
 
-    struct qt_context * q = qt_init(&iparams);
+    struct qt_context * q = qt_init_with_threads(&iparams, cpu_threads);
     if (!q) {
         fprintf(stderr, "[Server] FATAL: %s\n", qt_last_error());
         return 1;

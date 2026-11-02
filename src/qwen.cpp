@@ -15,6 +15,7 @@
 // any caller, internal or public.
 
 #include "qwen.h"
+#include "qwen-internal.h"
 
 #include "backend.h"
 #include "bpe.h"
@@ -324,6 +325,14 @@ static void qt_batch_worker(qt_context * q) {
 }
 
 struct qt_context * qt_init(const struct qt_init_params * params) {
+    return qt_init_with_threads(params, 0);
+}
+
+struct qt_context * qt_init_with_threads(const struct qt_init_params * params, int n_threads) {
+    if (n_threads < 0) {
+        qt_set_error("qt_init: CPU threads must be nonnegative");
+        return nullptr;
+    }
     if (!params || !params->talker_path || !params->codec_path) {
         qt_set_error("qt_init: params, talker_path or codec_path is NULL");
         qt_log(QT_LOG_ERROR, "[Qwen] qt_init requires talker_path and codec_path");
@@ -357,7 +366,7 @@ struct qt_context * qt_init(const struct qt_init_params * params) {
     // qt_free, which is idempotent on partial state (NULL-safe sched,
     // NULL GGUF handles, refcount-correct backend release).
     try {
-        q->bp = backend_init("Talker");
+        q->bp = backend_init("Talker", n_threads);
         if (!q->bp.backend) {
             qt_throw("qt_init: backend_init failed (no GGML backend available)");
         }

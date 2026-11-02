@@ -90,7 +90,7 @@ static void qt_ggml_log(enum ggml_log_level level, const char * text, void * use
     fflush(stderr);
 }
 
-static BackendPair backend_init(const char * label) {
+static BackendPair backend_init(const char * label, int n_threads_override = 0) {
     // Magic static: log callback install and dynamic backend loading
     // happen exactly once, safe under concurrent qt_init calls.
     static const bool loaded = [] {
@@ -130,7 +130,7 @@ static BackendPair backend_init(const char * label) {
         return BackendPair{};
     }
     bool best_is_cpu = (strcmp(ggml_backend_name(bp.backend), "CPU") == 0);
-    int  n_threads   = backend_cpu_n_threads();
+    int  n_threads   = n_threads_override > 0 ? n_threads_override : backend_cpu_n_threads();
     if (best_is_cpu) {
         ggml_backend_free(bp.backend);
         bp.backend     = cpu_backend_new(n_threads);
